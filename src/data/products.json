@@ -1,0 +1,53 @@
+[
+  {
+    "product_id": "PRD-1001",
+    "name": "AeroFit Pro Running Shoes",
+    "category": "Footwear",
+    "keywords": ["running", "lightweight", "breathable", "sports"],
+    "price": 129.99,
+    "currency": "USD",
+    "availability": "in_stock",
+    "description": "Lightweight running shoes with breathable mesh, shock-absorbing midsole, and all-day comfort for daily training."
+  },
+  {
+    "product_id": "PRD-1002",
+    "name": "UrbanTrail Waterproof Jacket",
+    "category": "Outerwear",
+    "keywords": ["jacket", "waterproof", "windproof", "hiking"],
+    "price": 149.5,
+    "currency": "USD",
+    "availability": "low_stock",
+    "description": "Waterproof and windproof jacket with sealed seams, adjustable hood, and lightweight insulation for outdoor adventures."
+  },
+  {
+    "product_id": "PRD-1003",
+    "name": "PulseX Smartwatch 2",
+    "category": "Electronics",
+    "keywords": ["smartwatch", "fitness", "heart rate", "gps"],
+    "price": 219.0,
+    "currency": "USD",
+    "availability": "in_stock",
+    "description": "Smartwatch with GPS tracking, heart-rate monitoring, sleep insights, and seven-day battery life."
+  },
+  {
+    "product_id": "PRD-1004",
+    "name": "HomeBrew Barista Coffee Maker",
+    "category": "Home Appliances",
+    "keywords": ["coffee", "espresso", "kitchen", "appliance"],
+    "price": 89.99,
+    "currency": "USD",
+    "availability": "out_of_stock",
+    "description": "Compact coffee maker with programmable brewing profiles, milk frother, and easy-clean removable drip tray."
+  },
+  {
+    "product_id": "PRD-1005",
+    "name": "CloudRest Memory Foam Pillow",
+    "category": "Home",
+    "keywords": ["pillow", "memory foam", "sleep", "comfort"],
+    "price": 39.95,
+    "currency": "USD",
+    "availability": "in_stock",
+    "description": "Ergonomic memory-foam pillow designed to align neck posture and improve sleep comfort for side and back sleepers."
+  }
+]
+

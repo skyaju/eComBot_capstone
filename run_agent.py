@@ -172,6 +172,11 @@ def _parse_args() -> argparse.Namespace:
         default=None,
         help="Override LOG_LEVEL from .env",
     )
+    parser.add_argument(
+        "--no-tools",
+        action="store_true",
+        help="Disable Day 03 tool workflows and run as pure conversational mode.",
+    )
     return parser.parse_args()
 
 
@@ -191,6 +196,8 @@ def main() -> None:
         overrides["agent_persona"] = args.persona
     if args.log_level:
         overrides["log_level"] = args.log_level
+    if args.no_tools:
+        overrides["tools_enabled"] = False
 
     if overrides:
         # Pydantic allows model_copy(update=...) for immutable override

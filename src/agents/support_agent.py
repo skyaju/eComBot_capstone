@@ -12,15 +12,14 @@ Design decisions:
   - The agent function itself is a pure factory: it receives a settings object
     and returns an (agent, session_service, runner) triple.  Nothing here
     touches os.getenv() directly — 100% testable with a mock settings object.
-  - We keep FAQ data as a Python dict so Day 03 can swap it for a real
-    RAG knowledge-base call without touching the agent signature.
+  - Day 03 tool workflows are injected through the same factory without
+    changing the public return contract used by CLI and ADK Web entrypoints.
 """
 
 from __future__ import annotations
 
 import logging
 import textwrap
-from typing import Final
 
 from google.adk.agents import LlmAgent
 from google.adk.models.lite_llm import LiteLlm
@@ -29,64 +28,16 @@ from google.adk.sessions import InMemorySessionService
 from google.genai import types as genai_types
 
 from src.config.settings import EComBotSettings, get_settings
+from src.tools import build_tools
 
 logger = logging.getLogger(__name__)
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Static FAQ knowledge base  (Day 03: replace with RAG tool call)
-# ─────────────────────────────────────────────────────────────────────────────
-_FAQ: Final[dict[str, str]] = {
-    "return policy": (
-        "We accept returns within 30 days of delivery. Items must be unused "
-        "and in original packaging. Start a return at our Returns Centre in "
-        "your account dashboard."
-    ),
-    "shipping time": (
-        "Standard shipping: 5–7 business days. Express: 2–3 business days. "
-        "Same-day delivery is available in select cities."
-    ),
-    "payment methods": (
-        "We accept Visa, Mastercard, American Express, PayPal, Apple Pay, "
-        "Google Pay, and store gift cards."
-    ),
-    "order cancellation": (
-        "Orders can be cancelled within 1 hour of placement. After that, "
-        "please wait for delivery and use our free return process."
-    ),
-    "price match": (
-        "We offer a 7-day price-match guarantee on identical items sold by "
-        "authorised retailers. Contact support with the competitor link."
-    ),
-    "warranty": (
-        "Most electronics carry a 1-year manufacturer warranty. Extended "
-        "warranties (up to 3 years) can be purchased at checkout."
-    ),
-    "international shipping": (
-        "We ship to 45+ countries. International orders arrive in 10–21 "
-        "business days. Import duties are the buyer's responsibility."
-    ),
-    "loyalty programme": (
-        "Earn 1 point per £1 spent. 100 points = £1 reward credit. "
-        "Points never expire while your account is active."
-    ),
-}
-
 
 # ─────────────────────────────────────────────────────────────────────────────
 # System-prompt builders
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _build_faq_block() -> str:
-    """Render the FAQ dict into a numbered markdown block for the prompt."""
-    lines = ["## Frequently Asked Questions\n"]
-    for i, (topic, answer) in enumerate(_FAQ.items(), start=1):
-        lines.append(f"{i}. **{topic.title()}**\n   {answer}\n")
-    return "\n".join(lines)
-
-
 def _build_friendly_prompt() -> str:
     """Warm, first-name-basis persona with selective emoji use."""
-    faq_block = _build_faq_block()
     return textwrap.dedent(f"""
         You are **eComBot** 🛍️ — a friendly, knowledgeable customer support
         assistant for an online retail store. You treat every customer like a
@@ -106,7 +57,19 @@ def _build_friendly_prompt() -> str:
         4. **Returns & refunds** — policy, process, timelines
         5. **FAQs** — payment, warranty, loyalty programme, price match
 
-        {faq_block}
+        ## Tool Selection Policy
+        Decide autonomously whether to answer directly or call a tool.
+
+        - Use `search_products` for catalog discovery, product comparisons,
+          availability checks, pricing, and recommendations.
+        - Use `lookup_order` whenever the customer asks for status, ETA,
+          shipping progress, or tracking details tied to a specific order.
+        - Use `retrieve_faq` for policy/FAQ style questions that can be
+          answered from the knowledge base (returns, shipping policy,
+          payments, cancellation, warranty, etc.).
+        - Answer directly without tools for greetings, conversational small
+          talk, or unsupported/non-store questions.
+        - Never mention tool names, internal calls, or system internals.
 
         ## Conversation Rules
 
@@ -133,13 +96,15 @@ def _build_friendly_prompt() -> str:
         > products, and everything shopping-related. Is there something
         > I can help you with today? 🛍️"
 
-        ### Unknown order details
-        You do NOT have access to a live order database in this session.
-        When a customer asks for real-time order data, say:
-        > "I'd love to pull up your order details! For live tracking and
-        > account-specific info, please visit **My Orders** in your account,
-        > or our support team can look this up at support@ecomstore.com.
-        > Your order number and email are all you need. 📦"
+        ### Recovery rules
+        If a tool returns an error, recover gracefully:
+        - `product_not_found`: ask for a different name, category, or keyword.
+        - `order_not_found`: ask the customer to confirm the order ID.
+        - `invalid_order_id`: share expected format (`ORD-12345`).
+        - `empty_search_criteria`: ask for at least one search signal.
+        - `faq_not_found`: provide best-effort guidance and offer escalation.
+        - `tool_execution_failed`: apologise briefly and continue with a safe,
+          conversational fallback.
 
         ## Response Format
         Structure multi-step answers like this:
@@ -157,7 +122,6 @@ def _build_friendly_prompt() -> str:
 
 def _build_formal_prompt() -> str:
     """Corporate, polished persona — no emoji, complete sentences."""
-    faq_block = _build_faq_block()
     return textwrap.dedent(f"""
         You are **eComBot**, the official customer service representative for
         an online retail organisation. You communicate with precision,
@@ -179,7 +143,16 @@ def _build_formal_prompt() -> str:
         4. **Returns and refunds** — policy details, initiation procedures
         5. **General FAQs** — payment, warranty, loyalty, price assurance
 
-        {faq_block}
+        ## Tool Selection Policy
+        You must choose the correct workflow for each request:
+
+        - Use `search_products` for catalog search, product details, pricing,
+          availability, and comparison requests.
+        - Use `lookup_order` for order-status, delivery-date, and tracking
+          requests when an order ID is available.
+        - Use `retrieve_faq` for policy-style and frequently asked questions.
+        - Answer directly for greetings and non-transactional conversation.
+        - Do not disclose tool names or implementation details to customers.
 
         ## Operating Procedures
 
@@ -203,14 +176,14 @@ def _build_formal_prompt() -> str:
         > with product enquiries, orders, and related shopping matters.
         > I would be happy to help you with any of those topics."
 
-        ### Real-time order data
-        This assistant does not have direct access to the order management
-        system. When customers require live order information, state:
-        > "To retrieve your current order status, please visit the
-        > 'My Orders' section of your account, or contact our support
-        > team directly at support@ecomstore.com with your order number
-        > and registered email address. Our team responds within
-        > 2 business hours."
+        ### Error recovery protocol
+        If a workflow returns an error, proceed as follows:
+        - `product_not_found`: request alternate product keywords/category.
+        - `order_not_found`: request re-confirmation of order ID.
+        - `invalid_order_id`: provide correct format (`ORD-12345`).
+        - `empty_search_criteria`: ask for at least one search criterion.
+        - `faq_not_found`: provide concise guidance and escalation option.
+        - `tool_execution_failed`: provide a transparent apology and fallback.
 
         ## Response Structure
         Use this format for substantive responses:
@@ -270,7 +243,17 @@ def create_support_agent(
         api_base=cfg.openrouter_api_base,
     )
 
-    # ── 3. Instantiate the LlmAgent ───────────────────────────────────────
+    # ── 3. Build tools (Day 03) ───────────────────────────────────────────
+    tools = []
+    if cfg.tools_enabled:
+        try:
+            tools, _tool_owner = build_tools(data_dir=cfg.mock_data_dir)
+            logger.info("Tool workflows enabled | tool_count=%d", len(tools))
+        except Exception:
+            logger.exception("Tool initialization failed; continuing without tools")
+            tools = []
+
+    # ── 4. Instantiate the LlmAgent ───────────────────────────────────────
     agent = LlmAgent(
         name=cfg.agent_name,
         model=llm,
@@ -280,6 +263,7 @@ def create_support_agent(
             "and FAQs with a professional and helpful tone."
         ),
         instruction=system_instruction,
+        tools=tools,
         # generate_content_config allows fine-grained model params
         generate_content_config=genai_types.GenerateContentConfig(
             temperature=cfg.model_temperature,
@@ -287,12 +271,12 @@ def create_support_agent(
         ),
     )
 
-    # ── 4. Session service (conversation memory) ──────────────────────────
+    # ── 5. Session service (conversation memory) ──────────────────────────
     # InMemorySessionService keeps full conversation history per session_id.
     # Swap for DatabaseSessionService in Day 03 for persistent memory.
     session_service = InMemorySessionService()
 
-    # ── 5. Runner ─────────────────────────────────────────────────────────
+    # ── 6. Runner ─────────────────────────────────────────────────────────
     runner = Runner(
         agent=agent,
         app_name=cfg.app_name,

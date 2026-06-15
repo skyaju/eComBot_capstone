@@ -1,0 +1,30 @@
+[
+  {
+    "order_id": "ORD-10001",
+    "status": "shipped",
+    "estimated_delivery_date": "2026-06-18",
+    "tracking_number": "TRK9988211US",
+    "carrier": "FedEx",
+    "shipping_address": "211 Cedar Ave, Austin, TX 78701, USA",
+    "items": ["AeroFit Pro Running Shoes"]
+  },
+  {
+    "order_id": "ORD-10002",
+    "status": "processing",
+    "estimated_delivery_date": "2026-06-22",
+    "tracking_number": null,
+    "carrier": null,
+    "shipping_address": "18 Lakeview Drive, Seattle, WA 98101, USA",
+    "items": ["PulseX Smartwatch 2", "CloudRest Memory Foam Pillow"]
+  },
+  {
+    "order_id": "ORD-10003",
+    "status": "delivered",
+    "estimated_delivery_date": "2026-06-10",
+    "tracking_number": "TRK5544788US",
+    "carrier": "UPS",
+    "shipping_address": "902 Market St, San Francisco, CA 94102, USA",
+    "items": ["UrbanTrail Waterproof Jacket"]
+  }
+]
+

@@ -7,9 +7,12 @@
 google-adk==2.1.0
 litellm==1.86.2
 python-dotenv==1.2.2
+pydantic==2.11.7
+pydantic-settings==2.10.1
 psycopg2-binary==2.9.9
 asyncpg==0.30.0
 redis==5.2.1
 SQLAlchemy==2.0.36
 adk-extra-services==0.1.7
 chromadb==1.0.20
+pytest==8.4.1

@@ -113,6 +113,18 @@ class EComBotSettings(BaseSettings):
     )
 
     # ------------------------------------------------------------------ #
+    # Day 03 - Tooling / Data                                               #
+    # ------------------------------------------------------------------ #
+    tools_enabled: bool = Field(
+        default=True,
+        description="Enable ADK tool-based product/order/FAQ workflows.",
+    )
+    mock_data_dir: str = Field(
+        default="src/data",
+        description="Path to JSON mock data directory (products/orders/faq).",
+    )
+
+    # ------------------------------------------------------------------ #
     # Validators                                                            #
     # ------------------------------------------------------------------ #
     @field_validator("openrouter_api_key")
