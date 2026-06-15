@@ -5,15 +5,15 @@ PURPOSE: Defines the eComBot LlmAgent with:
   - Rich, structured system instructions (Day 02)
   - Conversation memory via InMemorySessionService
   - Clean factory function following Dependency Inversion
+  - Day 06: Multi-agent ADK system via create_multi_agent_system()
 
 Design decisions:
-  - System prompt is built programmatically so it adapts to persona at runtime
-    without duplicating logic.
-  - The agent function itself is a pure factory: it receives a settings object
-    and returns an (agent, session_service, runner) triple.  Nothing here
-    touches os.getenv() directly — 100% testable with a mock settings object.
-  - Day 03 tool workflows are injected through the same factory without
-    changing the public return contract used by CLI and ADK Web entrypoints.
+  - create_support_agent() preserved for backward compatibility (ADK Web, tests).
+  - create_multi_agent_system() builds a proper ADK multi-agent architecture:
+      ProductAgent, OrderAgent, KnowledgeAgent sub-agents under a root
+      orchestrator LlmAgent that routes by transferring control.
+  - Shared LiteLlm instance across all sub-agents (single API connection).
+  - Each sub-agent has focused instructions + only the tools it owns.
 """
 
 from __future__ import annotations
@@ -308,3 +308,206 @@ def create_support_agent(
 
     logger.info("eComBot agent ready ✓")
     return agent, session_service, runner
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Sub-agent instruction builders  (Day 06)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _product_agent_instruction() -> str:
+    return textwrap.dedent("""
+        You are the **Product Agent** for eComBot.
+        Your sole responsibility is helping customers discover, compare, and choose products.
+
+        Use `search_products` for every product-related request:
+        - Catalog discovery and availability
+        - Price and feature comparison
+        - Recommendations (e.g., "gaming laptops under $1500")
+        - Follow-up searches for alternatives or cheaper options (use session context)
+
+        Always format product results as a short list with name, price, and availability.
+        End with a follow-up offer.
+        Never discuss orders, policies, or warranties — transfer those to the appropriate agent.
+    """).strip()
+
+
+def _order_agent_instruction() -> str:
+    return textwrap.dedent("""
+        You are the **Order Agent** for eComBot.
+        Your sole responsibility is handling customer order and shipping enquiries.
+
+        Use `lookup_order` for:
+        - Order status questions
+        - Tracking number and carrier details
+        - Estimated delivery date
+        - Follow-up shipping/status questions (reuse order ID from session memory)
+
+        If the order ID is not provided, ask for it in the format ORD-12345.
+        Never discuss product comparisons or return policies directly — transfer those.
+    """).strip()
+
+
+def _knowledge_agent_instruction() -> str:
+    return textwrap.dedent("""
+        You are the **Knowledge Agent** for eComBot.
+        Your sole responsibility is answering policy, FAQ, warranty, and specification questions.
+
+        Use `retrieve_faq` for concise FAQ-style answers (shipping time, payment methods, etc.).
+        Use `search_knowledge` for detailed policy clauses, warranty terms, loyalty rules,
+        and product specification documentation.
+
+        Always cite the source document at the end:
+        Source: - <filename>
+
+        Never discuss live order status or product pricing — transfer those to the right agent.
+    """).strip()
+
+
+def _orchestrator_instruction(persona: str) -> str:
+    tone = (
+        "Warm, helpful, and friendly. Use light emoji where appropriate."
+        if persona == "friendly"
+        else "Professional and precise. No emoji, formal register."
+    )
+    return textwrap.dedent(f"""
+        You are **eComBot** — the orchestrating customer support assistant for an online retail store.
+        Tone: {tone}
+
+        You coordinate a team of specialised agents:
+        - **product_agent**: product discovery, comparison, recommendations
+        - **order_agent**: order status, tracking, delivery ETA
+        - **knowledge_agent**: return policy, warranty, shipping policy, loyalty, FAQ
+
+        Routing rules (FOLLOW EXACTLY):
+        1. Customer asks about products, prices, availability, or comparisons
+           → transfer to `product_agent`
+        2. Customer asks about an order (provides ORD-XXXXX), tracking, or shipping status
+           → transfer to `order_agent`
+        3. Customer asks about policies, returns, warranty, FAQ, or loyalty programme
+           → transfer to `knowledge_agent`
+        4. Greetings, general questions, or out-of-scope topics
+           → answer directly
+
+        Never reveal agent names or internal routing to the customer.
+        Maintain context across the conversation (customer name, recent products, recent orders).
+        After each agent response, offer a natural follow-up.
+    """).strip()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Multi-agent public factory  (Day 06)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def create_multi_agent_system(
+    settings: EComBotSettings | None = None,
+) -> tuple[LlmAgent, InMemorySessionService, Runner]:
+    """
+    Build a production-style ADK multi-agent system.
+
+    Architecture:
+        eComBot (root orchestrator LlmAgent)
+          ├─ product_agent  (LlmAgent + search_products)
+          ├─ order_agent    (LlmAgent + lookup_order)
+          └─ knowledge_agent (LlmAgent + retrieve_faq + search_knowledge)
+
+    The root orchestrator routes via ADK's built-in agent transfer mechanism
+    (transfer_to_agent tool calls generated automatically by ADK when sub_agents
+    are configured).
+
+    Returns the same (agent, session_service, runner) triple as create_support_agent()
+    for full backward compatibility with CLI and ADK Web.
+    """
+    cfg = settings or get_settings()
+
+    logger.info(
+        "Creating eComBot multi-agent system | persona=%s | model=%s",
+        cfg.agent_persona,
+        cfg.model_name,
+    )
+
+    gen_config = genai_types.GenerateContentConfig(
+        temperature=cfg.model_temperature,
+        max_output_tokens=cfg.max_output_tokens,
+    )
+
+    def _make_llm() -> LiteLlm:
+        return LiteLlm(
+            model=cfg.model_name,
+            api_key=cfg.openrouter_api_key,
+            api_base=cfg.openrouter_api_base,
+        )
+
+    memory_service = get_session_service()
+    all_tools: list = []
+    if cfg.tools_enabled:
+        try:
+            all_tools, _ = build_tools(
+                data_dir=cfg.mock_data_dir,
+                knowledge_dir=cfg.knowledge_base_dir,
+                session_service=memory_service,
+                session_id_getter=memory_service.get_current_session_id,
+            )
+            logger.info("Tools loaded for multi-agent system | count=%d", len(all_tools))
+        except Exception:
+            logger.exception("Tool init failed for multi-agent system; falling back to empty tools")
+
+    # Split tools by ownership (positional in the list returned by build_tools)
+    # build_tools returns: [search_products, lookup_order, retrieve_faq, search_knowledge]
+    product_tools = [all_tools[0]] if len(all_tools) > 0 else []
+    order_tools = [all_tools[1]] if len(all_tools) > 1 else []
+    knowledge_tools = all_tools[2:4] if len(all_tools) >= 4 else []
+
+    # ── Sub-agents ────────────────────────────────────────────────────────
+    product_agent = LlmAgent(
+        name="product_agent",
+        model=_make_llm(),
+        description="Handles all product search, comparison, and recommendation requests.",
+        instruction=_product_agent_instruction(),
+        tools=product_tools,
+        generate_content_config=gen_config,
+    )
+
+    order_agent = LlmAgent(
+        name="order_agent",
+        model=_make_llm(),
+        description="Handles all order status, tracking, and shipping enquiry requests.",
+        instruction=_order_agent_instruction(),
+        tools=order_tools,
+        generate_content_config=gen_config,
+    )
+
+    knowledge_agent = LlmAgent(
+        name="knowledge_agent",
+        model=_make_llm(),
+        description="Handles all policy, FAQ, warranty, returns, and loyalty programme questions.",
+        instruction=_knowledge_agent_instruction(),
+        tools=knowledge_tools,
+        generate_content_config=gen_config,
+    )
+
+    # ── Root orchestrator ─────────────────────────────────────────────────
+    root_agent = LlmAgent(
+        name=cfg.agent_name,
+        model=_make_llm(),
+        description=(
+            "Root orchestrator. Routes customer requests to specialised agents "
+            "and maintains conversation context."
+        ),
+        instruction=_orchestrator_instruction(cfg.agent_persona),
+        sub_agents=[product_agent, order_agent, knowledge_agent],
+        generate_content_config=gen_config,
+    )
+
+    session_service = InMemorySessionService()
+    runner = Runner(
+        agent=root_agent,
+        app_name=cfg.app_name,
+        session_service=session_service,
+    )
+
+    logger.info(
+        "eComBot multi-agent system ready ✓  "
+        "sub_agents=[product_agent, order_agent, knowledge_agent]"
+    )
+    return root_agent, session_service, runner
+

@@ -1,0 +1,33 @@
+[
+  {
+    "faq_id": "FAQ-001",
+    "question": "What is your return policy?",
+    "answer": "You can return unused items within 30 days of delivery. Refunds are processed within 3 to 5 business days after inspection.",
+    "tags": ["returns", "refund", "policy"]
+  },
+  {
+    "faq_id": "FAQ-002",
+    "question": "How long does shipping take?",
+    "answer": "Standard shipping takes 5 to 7 business days and express shipping takes 2 to 3 business days.",
+    "tags": ["shipping", "delivery", "timeline"]
+  },
+  {
+    "faq_id": "FAQ-003",
+    "question": "Which payment methods are accepted?",
+    "answer": "We accept Visa, Mastercard, American Express, PayPal, Apple Pay, Google Pay, and gift cards.",
+    "tags": ["payment", "cards", "checkout"]
+  },
+  {
+    "faq_id": "FAQ-004",
+    "question": "Can I cancel my order?",
+    "answer": "You can cancel within one hour of placing the order. After that, use the return process once your order arrives.",
+    "tags": ["cancel", "order", "modification"]
+  },
+  {
+    "faq_id": "FAQ-005",
+    "question": "Do you offer product warranties?",
+    "answer": "Most electronics include a 1-year manufacturer warranty. Eligible items can add an extended warranty at checkout.",
+    "tags": ["warranty", "electronics", "coverage"]
+  }
+]
+

@@ -8,11 +8,13 @@ Features:
   - Graceful exit via 'quit', 'exit', or Ctrl-C
   - Coloured prompt for readability
   - Startup banner with active configuration
+  - --multi-agent flag to enable multi-agent orchestration mode
 
 Usage:
     python run_agent.py
     python run_agent.py --persona formal
     python run_agent.py --session-id my-test-session-001
+    python run_agent.py --multi-agent
 """
 
 from __future__ import annotations
@@ -34,7 +36,7 @@ from google.adk.runners import Runner
 from google.adk.sessions import InMemorySessionService
 from google.genai import types as genai_types
 
-from src.agents.support_agent import create_support_agent
+from src.agents.support_agent import create_multi_agent_system, create_support_agent
 from src.config.settings import EComBotSettings, get_settings
 from src.services.session_service import get_session_service
 
@@ -45,6 +47,7 @@ _CYAN = "\033[96m"
 _GREEN = "\033[92m"
 _YELLOW = "\033[93m"
 _DIM = "\033[2m"
+_MAGENTA = "\033[95m"
 
 logger = logging.getLogger(__name__)
 
@@ -136,12 +139,14 @@ async def chat_loop(
 def _print_banner(settings: EComBotSettings, session_id: str) -> None:
     """Print a startup banner showing active configuration."""
     persona_icon = "😊" if settings.agent_persona == "friendly" else "🎩"
+    mode = "multi-agent 🤖" if settings.multi_agent_mode else "single-agent"
     print(
         f"\n{'─' * 60}\n"
         f"  {_BOLD}eComBot — AI Customer Support Assistant{_RESET}\n"
         f"{'─' * 60}\n"
         f"  Model   : {settings.model_name}\n"
         f"  Persona : {settings.agent_persona} {persona_icon}\n"
+        f"  Mode    : {mode}\n"
         f"  Session : {session_id}\n"
         f"  Temp    : {settings.model_temperature}\n"
         f"{'─' * 60}\n"
@@ -183,6 +188,11 @@ def _parse_args() -> argparse.Namespace:
         action="store_true",
         help="Disable Day 03 tool workflows and run as pure conversational mode.",
     )
+    parser.add_argument(
+        "--multi-agent",
+        action="store_true",
+        help="Enable multi-agent mode (Day 06): ProductAgent, OrderAgent, KnowledgeAgent sub-agents.",
+    )
     return parser.parse_args()
 
 
@@ -209,6 +219,10 @@ def main() -> None:
         # Pydantic allows model_copy(update=...) for immutable override
         settings = settings.model_copy(update=overrides)
 
+    # ── Apply --multi-agent flag ──────────────────────────────────────────
+    if args.multi_agent and not settings.multi_agent_mode:
+        settings = settings.model_copy(update={"multi_agent_mode": True})
+
     # ── Logging ───────────────────────────────────────────────────────────
     logging.basicConfig(
         level=settings.log_level,
@@ -220,7 +234,10 @@ def main() -> None:
     # ── Build agent ───────────────────────────────────────────────────────
     session_id = args.session_id or f"{settings.session_id_prefix}-{uuid.uuid4().hex[:8]}"
 
-    _agent, session_service, runner = create_support_agent(settings)
+    if settings.multi_agent_mode:
+        _agent, session_service, runner = create_multi_agent_system(settings)
+    else:
+        _agent, session_service, runner = create_support_agent(settings)
 
     # ── Run async loop ────────────────────────────────────────────────────
     asyncio.run(

@@ -1,0 +1,14 @@
+Loyalty Program Overview
+
+Members earn points on eligible purchases and can redeem points for discounts at checkout.
+
+Core rules:
+- Enrollment is free.
+- Points are awarded after order completion.
+- Promotional multipliers may apply during campaigns.
+- Points expire after 12 months of account inactivity.
+
+Tier benefits:
+- Silver: early campaign access
+- Gold: priority support and bonus point events
+- Platinum: highest bonus rates and exclusive bundles

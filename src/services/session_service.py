@@ -278,7 +278,37 @@ class SessionService:
 
 @lru_cache(maxsize=1)
 def get_session_service() -> SessionService:
-    """Singleton session service shared by runner and tools in local mode."""
+    """
+    Singleton session service factory.
 
+    Priority:
+      1. Redis-backed repository when REDIS_URL is configured (Day 07).
+      2. InMemorySessionRepository as fallback (local dev / tests).
+
+    Uses @lru_cache so the repository is initialised exactly once per process.
+    Call get_session_service.cache_clear() in tests to get a fresh instance.
+    """
+    from src.config.settings import get_settings  # local import avoids circular
+
+    cfg = get_settings()
+    if cfg.redis_url:
+        try:
+            from src.services.redis_session_service import RedisSessionRepository
+
+            repository = RedisSessionRepository(
+                redis_url=cfg.redis_url,
+                ttl_seconds=cfg.session_ttl_seconds,
+            )
+            if repository.ping():
+                logger.info("SessionService using RedisSessionRepository.")
+                return SessionService(repository=repository)
+            else:
+                logger.warning(
+                    "Redis is configured but unreachable; falling back to in-memory sessions."
+                )
+        except Exception as exc:
+            logger.warning("Redis init failed (%s); falling back to in-memory sessions.", exc)
+
+    logger.info("SessionService using InMemorySessionRepository.")
     return SessionService()
 

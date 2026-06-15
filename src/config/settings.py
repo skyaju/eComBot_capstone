@@ -129,6 +129,63 @@ class EComBotSettings(BaseSettings):
     )
 
     # ------------------------------------------------------------------ #
+    # Day 06 - Multi-Agent Architecture                                     #
+    # ------------------------------------------------------------------ #
+    multi_agent_mode: bool = Field(
+        default=False,
+        description=(
+            "When True, use the ADK multi-agent system with specialised sub-agents "
+            "(product_agent, order_agent, knowledge_agent) under a root orchestrator. "
+            "When False (default), use the monolithic single-agent with all tools."
+        ),
+    )
+
+    # ------------------------------------------------------------------ #
+    # Day 07 - Redis Session Storage                                        #
+    # ------------------------------------------------------------------ #
+    redis_url: str | None = Field(
+        default=None,
+        description=(
+            "Redis connection URL (e.g. redis://localhost:6379/0). "
+            "When set, session context is persisted in Redis. "
+            "Falls back to in-memory when unset."
+        ),
+    )
+    session_ttl_seconds: int = Field(
+        default=86400,  # 24 hours
+        ge=60,
+        description="Session TTL in Redis (seconds). Default 24 h.",
+    )
+
+    # ------------------------------------------------------------------ #
+    # Day 07 - PostgreSQL                                                   #
+    # ------------------------------------------------------------------ #
+    database_url: str | None = Field(
+        default=None,
+        description=(
+            "PostgreSQL connection URL "
+            "(e.g. postgresql://user:pass@host:5432/dbname). "
+            "When set, analytics and audit logs are persisted."
+        ),
+    )
+
+    # ------------------------------------------------------------------ #
+    # Day 07 - ChromaDB Vector Store                                        #
+    # ------------------------------------------------------------------ #
+    chroma_host: str | None = Field(
+        default=None,
+        description="ChromaDB HTTP server hostname. When set, RAG uses vector search.",
+    )
+    chroma_port: int = Field(
+        default=8000,
+        description="ChromaDB HTTP server port.",
+    )
+    chroma_collection: str = Field(
+        default="ecombot_knowledge",
+        description="ChromaDB collection name for the knowledge base.",
+    )
+
+    # ------------------------------------------------------------------ #
     # Validators                                                            #
     # ------------------------------------------------------------------ #
     @field_validator("openrouter_api_key")
