@@ -53,7 +53,7 @@ class EComBotSettings(BaseSettings):
         description="Base URL for the OpenRouter-compatible endpoint.",
     )
     model_name: str = Field(
-        default="openai/gpt-4o-mini",
+        default="openrouter/google/gemini-2.5-flash",
         description=(
             "Model identifier as listed on OpenRouter, e.g. "
             "'openai/gpt-4o-mini', 'anthropic/claude-3-haiku', "
