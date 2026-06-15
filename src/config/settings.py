@@ -123,6 +123,10 @@ class EComBotSettings(BaseSettings):
         default="src/data",
         description="Path to JSON mock data directory (products/orders/faq).",
     )
+    knowledge_base_dir: str = Field(
+        default="data/knowledge",
+        description="Path to markdown/text knowledge documents for RAG retrieval.",
+    )
 
     # ------------------------------------------------------------------ #
     # Validators                                                            #

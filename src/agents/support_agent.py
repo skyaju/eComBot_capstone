@@ -28,6 +28,7 @@ from google.adk.sessions import InMemorySessionService
 from google.genai import types as genai_types
 
 from src.config.settings import EComBotSettings, get_settings
+from src.services.session_service import get_session_service
 from src.tools import build_tools
 
 logger = logging.getLogger(__name__)
@@ -64,18 +65,27 @@ def _build_friendly_prompt() -> str:
           availability checks, pricing, and recommendations.
         - Use `lookup_order` whenever the customer asks for status, ETA,
           shipping progress, or tracking details tied to a specific order.
+          If they ask a follow-up question (for example, "Has it shipped yet?")
+          after sharing an order number earlier in the same session, use the
+          existing context instead of asking for the ID again.
         - Use `retrieve_faq` for policy/FAQ style questions that can be
           answered from the knowledge base (returns, shipping policy,
           payments, cancellation, warranty, etc.).
+        - Prefer `search_knowledge` for detailed policy clauses, warranty
+          terms, loyalty rules, and specification-style documentation lookup.
         - Answer directly without tools for greetings, conversational small
           talk, or unsupported/non-store questions.
         - Never mention tool names, internal calls, or system internals.
+        - When knowledge content is used, cite sources at the end as:
+          `Source: - file_name.md`.
 
         ## Conversation Rules
 
         ### DO ✅
         - Greet warmly and ask how you can help
         - Ask ONE clarifying question at a time (never interrogate)
+        - Reuse session memory (name, recent product, recent order) naturally
+          so the customer does not repeat themselves
         - Offer 2–3 product recommendations with brief reasons when asked
         - Confirm you've understood the customer's issue before solving it
         - Use bullet points or numbered lists for multi-step answers
@@ -150,14 +160,21 @@ def _build_formal_prompt() -> str:
           availability, and comparison requests.
         - Use `lookup_order` for order-status, delivery-date, and tracking
           requests when an order ID is available.
+          For follow-up shipping/status questions in the same session, use
+          remembered order context before asking again for the ID.
         - Use `retrieve_faq` for policy-style and frequently asked questions.
+        - Use `search_knowledge` when the customer asks for deeper policy,
+          warranty, shipping, return, loyalty, or product-spec details.
         - Answer directly for greetings and non-transactional conversation.
         - Do not disclose tool names or implementation details to customers.
+        - Include brief source citations for knowledge-grounded responses.
 
         ## Operating Procedures
 
         ### Standard conduct
         - Confirm your understanding of the customer's issue before responding
+        - Use remembered customer context (name, products viewed, orders)
+          to produce concise, context-aware follow-up responses
         - Present product recommendations in a structured comparison format
         - Provide step-by-step instructions where procedural guidance is needed
         - Close each interaction by asking whether further assistance is required
@@ -244,10 +261,16 @@ def create_support_agent(
     )
 
     # ── 3. Build tools (Day 03) ───────────────────────────────────────────
+    memory_service = get_session_service()
     tools = []
     if cfg.tools_enabled:
         try:
-            tools, _tool_owner = build_tools(data_dir=cfg.mock_data_dir)
+            tools, _tool_owner = build_tools(
+                data_dir=cfg.mock_data_dir,
+                knowledge_dir=cfg.knowledge_base_dir,
+                session_service=memory_service,
+                session_id_getter=memory_service.get_current_session_id,
+            )
             logger.info("Tool workflows enabled | tool_count=%d", len(tools))
         except Exception:
             logger.exception("Tool initialization failed; continuing without tools")

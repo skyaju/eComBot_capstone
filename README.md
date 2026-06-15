@@ -1,51 +1,129 @@
-# eComBot (Day 03 - Tool-Based Support Workflows)
+# eComBot (Day 05 - Memory + RAG Knowledge Assistant)
 
-eComBot is a Google ADK-powered e-commerce support assistant with OpenRouter integration.
+eComBot is a Google ADK-powered e-commerce support assistant with OpenRouter model routing, tool-based workflows, in-session memory, and retrieval-augmented knowledge answering.
 
-Day 03 upgrades the assistant from pure LLM reasoning to intelligent tool-driven workflows for:
-- Product search
-- Order lookup
-- FAQ retrieval
-
-## Architecture
+## Architecture Summary
 
 ```text
 User (CLI / ADK Web)
-		|
-		v
+  |
+  v
 run_agent.py / src/agent.py
-		|
-		v
-create_support_agent(...)  [src/agents/support_agent.py]
-		|
-		+--> LiteLlm(OpenRouter)
-		|
-		+--> ADK Tools (search_products, lookup_order, retrieve_faq)
-				 |
-				 v
-			EComSupportTools facade      [src/tools/adk_tools.py]
-				 |
-				 v
-			Domain services              [src/tools/services.py]
-				 |
-				 v
-			MockDataStore + validators   [src/tools/data_loader.py, src/tools/models.py]
-				 |
-				 v
-			JSON knowledge/data files    [src/data/*.json]
+  |
+  v
+create_support_agent(...) [src/agents/support_agent.py]
+  |
+  +--> LiteLlm (OpenRouter)
+  |
+  +--> ADK Runner + InMemorySessionService (conversation history)
+  |
+  +--> EComSupportTools [src/tools/adk_tools.py]
+		  |
+		  +--> ProductService      [search_products]
+		  +--> OrderService        [lookup_order]
+		  +--> FAQService          [retrieve_faq]
+		  +--> KnowledgeService    [search_knowledge]
+		  |
+		  +--> MockDataStore + Knowledge Loader [src/tools/data_loader.py]
+		  |      - src/data/products.json
+		  |      - src/data/orders.json
+		  |      - src/data/faq.json
+		  |      - data/knowledge/**/*.md|txt
+		  |
+		  +--> SessionService [src/services/session_service.py]
+				 - Context model
+				 - Active session tracking
+				 - Topic inference
+				 - Conversation summary
 ```
 
-## Tool Flow
+## RAG Flow
 
-1. Customer message arrives.
-2. Agent instruction enforces intent-aware behavior:
-   - Product intent -> `search_products`
-   - Order intent -> `lookup_order`
-   - Policy/FAQ intent -> `retrieve_faq`
-   - Greeting/small-talk -> direct conversational response
-3. Tool returns structured output.
-4. Assistant responds naturally (without exposing internal tool calls).
-5. If a tool fails or returns no results, the assistant recovers gracefully.
+```text
+User Question
+   |
+   v
+search_knowledge tool
+   |
+   v
+KnowledgeService ranking (semantic-style token expansion + IDF cosine)
+   |
+   v
+Top-K snippets + confidence + source files
+   |
+   v
+LLM response with concise source citations
+```
+
+## Session Lifecycle
+
+1. Create/attach session in ADK + local `SessionService`.
+2. Store each user message and extract context (name, order IDs, support topic).
+3. Activate session context for each turn.
+4. Tool calls read/write session context (`last_tool_used`, recent products/orders).
+5. Save assistant response and refresh summary for follow-up understanding.
+6. Clear session when requested.
+
+## Memory Model
+
+`SessionContext` includes:
+- `customer_name`
+- `recent_products`
+- `recent_order_ids`
+- `active_support_topic`
+- `last_tool_used`
+- `conversation_summary`
+- `shipping_inquiry_active`
+- `return_refund_discussed`
+
+## Memory + RAG Interaction
+
+- User: `Tell me about the ASUS ROG Strix G16`
+- User: `What warranty comes with it?`
+- Behavior:
+  1. Product context is remembered in session.
+  2. `search_knowledge` uses session summary for query expansion.
+  3. Response includes warranty details and source file citations.
+
+## Tool Routing Policy
+
+- Product discovery/comparison/availability -> `search_products`
+- Order status/tracking/ETA -> `lookup_order`
+- FAQ answer lookup -> `retrieve_faq`
+- Policy/specification/warranty/shipping/returns/loyalty docs -> `search_knowledge`
+- Greetings/small talk -> direct LLM response
+
+## Knowledge Base Layout
+
+```text
+data/knowledge/
+  products/
+	asus_rog_strix_g16.md
+	pulsex_smartwatch_2.md
+  shipping/
+	shipping_policy.md
+  returns/
+	returns_policy.md
+  faq/
+	payment_methods.md
+  policies/
+	warranty_policy.md
+	loyalty_program.txt
+```
+
+## Cleanup Report
+
+Audit results and removals:
+
+1. `src/agents/instruction.txt`
+   - Why unused: agent prompt is generated in `src/agents/support_agent.py`; file has no runtime imports.
+   - Dependency analysis: only README historical mention, no code path references.
+   - Safe removal: confirmed and removed.
+
+2. `__pycache__` artifacts (under `src/` and `tests/`)
+   - Why unused: bytecode cache files are regenerated automatically and should not be source-managed.
+   - Dependency analysis: never imported directly by application code.
+   - Safe removal: confirmed and removed.
 
 ## Project Structure
 
@@ -54,17 +132,26 @@ ecombot/
   run_agent.py
   requirements.txt
   README.md
+  data/
+	knowledge/
+	  products/
+	  shipping/
+	  returns/
+	  faq/
+	  policies/
   src/
 	agent.py
 	agents/
 	  support_agent.py
-	  instruction.txt
 	config/
 	  settings.py
 	data/
 	  products.json
 	  orders.json
 	  faq.json
+	services/
+	  __init__.py
+	  session_service.py
 	tools/
 	  __init__.py
 	  adk_tools.py
@@ -73,14 +160,11 @@ ecombot/
 	  services.py
   tests/
 	test_day03_tool_workflows.py
-	day03_scenarios.md
+	test_day04_session_memory.py
+	test_day05_rag_workflows.py
 ```
 
 ## Setup
-
-1. Create and activate your Python 3.11+ environment.
-2. Install dependencies.
-3. Set your OpenRouter key in `.env`.
 
 ```bash
 python -m venv .venv
@@ -96,67 +180,27 @@ MODEL_NAME=openrouter/google/gemini-2.5-flash
 AGENT_PERSONA=friendly
 TOOLS_ENABLED=true
 MOCK_DATA_DIR=src/data
+KNOWLEDGE_BASE_DIR=data/knowledge
 ```
 
-## Running
-
-CLI mode:
+## Run
 
 ```bash
 python run_agent.py
 python run_agent.py --persona formal
 python run_agent.py --no-tools
-```
-
-ADK Web:
-
-```bash
 adk web
 ```
 
-## Tests
-
-Run the Day 03 workflow tests:
+## Test
 
 ```bash
-python -m pytest tests/test_day03_tool_workflows.py -q
+python -m pytest tests/test_day03_tool_workflows.py tests/test_day04_session_memory.py tests/test_day05_rag_workflows.py -q
 ```
 
-## Example Conversations
+## Future Redis Migration Plan
 
-### Product Search
-**User:** "Show me lightweight running shoes under sports category."
-
-**Assistant behavior:** Calls product search, returns matching item(s) with price and availability.
-
-### Product Comparison
-**User:** "Compare your Home products for comfort and kitchen use."
-
-**Assistant behavior:** Calls product search with category + keywords, then compares returned products.
-
-### Order Lookup
-**User:** "Track ORD-10001"
-
-**Assistant behavior:** Calls order lookup and replies with status, ETA, and tracking details.
-
-### FAQ Retrieval
-**User:** "What is your return policy?"
-
-**Assistant behavior:** Retrieves structured FAQ answer.
-
-### Invalid Order ID
-**User:** "Track 10001"
-
-**Assistant behavior:** Returns a graceful validation message with expected format `ORD-12345`.
-
-## Day 03 Error Handling
-
-The tool layer handles and normalizes:
-- `product_not_found`
-- `order_not_found`
-- `invalid_order_id`
-- `empty_search_criteria`
-- `faq_not_found`
-- `tool_execution_failed`
-
-The agent instructions require graceful recovery for each case.
+- Keep `SessionRepository` protocol and implement `RedisSessionRepository`.
+- Preserve `SessionService` public API for tool/runner compatibility.
+- Store session context + summary with TTL and optimistic locking.
+- Keep retrieval layer stateless; only pass `session_id` and read context through `SessionService`.

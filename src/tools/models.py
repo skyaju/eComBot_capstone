@@ -47,6 +47,15 @@ class FAQRecord(BaseModel):
     tags: list[str] = Field(default_factory=list)
 
 
+class KnowledgeDocument(BaseModel):
+    """Normalized documentation record loaded from markdown/text knowledge files."""
+
+    doc_id: str = Field(min_length=3)
+    source: str = Field(min_length=3)
+    category: str = Field(min_length=2)
+    content: str = Field(min_length=20)
+
+
 class ProductSearchInput(BaseModel):
     """Input contract for product search tool."""
 
@@ -112,4 +121,20 @@ class FAQQueryInput(BaseModel):
         if not stripped:
             raise ValueError("Question cannot be empty.")
         return stripped
+
+
+class KnowledgeSearchInput(BaseModel):
+    """Input contract for retrieval-augmented documentation search."""
+
+    question: str = Field(min_length=3)
+    top_k: int = Field(default=3, ge=1, le=5)
+
+    @field_validator("question")
+    @classmethod
+    def normalize_question(cls, value: str) -> str:
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("Question cannot be empty.")
+        return stripped
+
 

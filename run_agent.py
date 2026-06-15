@@ -23,7 +23,6 @@ import logging
 import os
 import sys
 import uuid
-from typing import AsyncIterator
 
 # ── Ensure project root is on sys.path ─────────────────────────────────────
 PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
@@ -37,6 +36,7 @@ from google.genai import types as genai_types
 
 from src.agents.support_agent import create_support_agent
 from src.config.settings import EComBotSettings, get_settings
+from src.services.session_service import get_session_service
 
 # ── ANSI colour codes (disabled on Windows without colorama) ───────────────
 _RESET = "\033[0m"
@@ -74,6 +74,8 @@ async def chat_loop(
         user_id=settings.user_id,
         session_id=session_id,
     )
+    memory_service = get_session_service()
+    memory_service.create_session(session_id=session_id, user_id=settings.user_id)
 
     _print_banner(settings, session_id)
 
@@ -93,24 +95,26 @@ async def chat_loop(
             break
 
         # ── Stream response ───────────────────────────────────────────────
+        memory_service.remember_user_message(session_id=session_id, message=user_input)
         print(f"\n{_BOLD}{_GREEN}eComBot:{_RESET} ", end="", flush=True)
 
         full_response = ""
         try:
-            async for event in runner.run_async(
-                user_id=settings.user_id,
-                session_id=session_id,
-                new_message=genai_types.Content(
-                    role="user",
-                    parts=[genai_types.Part(text=user_input)],
-                ),
-            ):
-                # ADK streams multiple event types; we only print text chunks
-                if event.content and event.content.parts:
-                    for part in event.content.parts:
-                        if hasattr(part, "text") and part.text:
-                            print(part.text, end="", flush=True)
-                            full_response += part.text
+            with memory_service.activate_session(session_id):
+                async for event in runner.run_async(
+                    user_id=settings.user_id,
+                    session_id=session_id,
+                    new_message=genai_types.Content(
+                        role="user",
+                        parts=[genai_types.Part(text=user_input)],
+                    ),
+                ):
+                    # ADK streams multiple event types; we only print text chunks
+                    if event.content and event.content.parts:
+                        for part in event.content.parts:
+                            if hasattr(part, "text") and part.text:
+                                print(part.text, end="", flush=True)
+                                full_response += part.text
 
         except Exception as exc:
             print(f"\n{_YELLOW}⚠ Error communicating with the model: {exc}{_RESET}")
@@ -118,6 +122,8 @@ async def chat_loop(
             continue
 
         print()  # newline after streaming response
+        memory_service.remember_assistant_message(session_id=session_id, message=full_response)
+        memory_service.summarize_conversation(session_id=session_id)
 
         if not full_response:
             print(f"{_DIM}(No response received — check your API key and model name){_RESET}")
