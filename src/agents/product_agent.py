@@ -59,7 +59,10 @@ class ProductAgent:
             handled=True,
             tool_name="search_products",
             message="\n".join(lines),
-            metadata={"result_count": len(products)},
+            metadata={
+                "result_count": len(products),
+                "products": products[:3],
+            },
         )
 
     @staticmethod

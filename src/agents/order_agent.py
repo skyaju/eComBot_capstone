@@ -48,7 +48,13 @@ class OrderAgent:
                 f"Estimated delivery: {result.get('estimated_delivery_date') or 'not available'}. "
                 f"Tracking: {tracking.get('tracking_number') or 'pending'} via {tracking.get('carrier') or 'carrier not assigned'}."
             ),
-            metadata={"order_id": result["order_id"], "status": result["order_status"]},
+            metadata={
+                "order_id": result["order_id"],
+                "status": result["order_status"],
+                "estimated_delivery_date": result.get("estimated_delivery_date"),
+                "tracking_number": tracking.get("tracking_number"),
+                "carrier": tracking.get("carrier"),
+            },
         )
 
     @staticmethod

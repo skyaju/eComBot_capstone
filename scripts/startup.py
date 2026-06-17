@@ -81,13 +81,17 @@ def _check_chromadb(host: str, port: int) -> None:
 
 def _run_migrations(database_url: str) -> None:
     logger.info("Running Alembic migrations...")
-    from alembic import command as alembic_cmd
-    from alembic.config import Config
+    try:
+        from alembic import command as alembic_cmd
+        from alembic.config import Config
 
-    alembic_cfg = Config(str(PROJECT_ROOT / "alembic.ini"))
-    alembic_cfg.set_main_option("sqlalchemy.url", database_url)
-    alembic_cmd.upgrade(alembic_cfg, "head")
-    logger.info("✓ Migrations complete.")
+        alembic_cfg = Config(str(PROJECT_ROOT / "alembic.ini"))
+        alembic_cfg.set_main_option("sqlalchemy.url", database_url)
+        alembic_cmd.upgrade(alembic_cfg, "head")
+        logger.info("✓ Migrations complete.")
+    except Exception as exc:
+        # Keep startup non-blocking until migration scaffolding is present.
+        logger.warning("Migrations skipped (non-fatal): %s", exc)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -126,6 +130,7 @@ def main() -> None:
     chroma_port = int(os.getenv("CHROMA_PORT", "8000"))
     chroma_collection = os.getenv("CHROMA_COLLECTION", "ecombot_knowledge")
     knowledge_dir = os.getenv("KNOWLEDGE_BASE_DIR", "data/knowledge")
+    skip_ingestion = os.getenv("SKIP_KNOWLEDGE_INGESTION", "false").lower() in {"1", "true", "yes"}
 
     # ── Wait for services ────────────────────────────────────────────────────
     if redis_url:
@@ -142,8 +147,10 @@ def main() -> None:
         _run_migrations(database_url)
 
     # ── Knowledge ingestion ──────────────────────────────────────────────────
-    if chroma_host:
+    if chroma_host and not skip_ingestion:
         _ingest_knowledge(chroma_host, chroma_port, knowledge_dir, chroma_collection)
+    elif chroma_host and skip_ingestion:
+        logger.info("Knowledge ingestion skipped (SKIP_KNOWLEDGE_INGESTION=true).")
 
     logger.info("============================================================")
     logger.info("  Startup complete. Handing off to ADK web server.")

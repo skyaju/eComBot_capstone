@@ -50,7 +50,13 @@ class _FastEmbedFunction:
         self._model = TextEmbedding(model_name=model_name)
 
     def __call__(self, input: list[str]) -> list[list[float]]:  # noqa: A002
-        return [emb.tolist() for emb in self._model.embed(input)]
+        vectors: list[list[float]] = []
+        for emb in self._model.embed(input):
+            if hasattr(emb, "tolist"):
+                vectors.append(emb.tolist())
+            else:
+                vectors.append(list(emb))
+        return vectors
 
     @classmethod
     def get(cls) -> "_FastEmbedFunction":

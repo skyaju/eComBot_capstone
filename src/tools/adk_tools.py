@@ -7,7 +7,7 @@ from pydantic import ValidationError
 
 from src.services.session_service import SessionService, get_session_service
 from src.tools.data_loader import DataLoadError, get_mock_data_store
-from src.tools.services import FAQService, KnowledgeService, OrderService, ProductService
+from src.tools.services import FAQService, OrderService, ProductService, build_knowledge_service
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +28,10 @@ class EComSupportTools:
         self._product_service = ProductService(self._data_store, session_service=self._session_service)
         self._order_service = OrderService(self._data_store, session_service=self._session_service)
         self._faq_service = FAQService(self._data_store)
-        self._knowledge_service = KnowledgeService(self._data_store, session_service=self._session_service)
+        self._knowledge_service = build_knowledge_service(
+            self._data_store,
+            session_service=self._session_service,
+        )
 
     def _active_session_id(self) -> str | None:
         return self._session_id_getter()

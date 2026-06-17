@@ -219,7 +219,7 @@ def main() -> None:
         # Pydantic allows model_copy(update=...) for immutable override
         settings = settings.model_copy(update=overrides)
 
-    # ── Apply --multi-agent flag ──────────────────────────────────────────
+   # ── Apply --multi-agent flag ──────────────────────────────────────────
     if args.multi_agent and not settings.multi_agent_mode:
         settings = settings.model_copy(update={"multi_agent_mode": True})
 

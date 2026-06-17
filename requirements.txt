@@ -1,22 +1,25 @@
 # eComBot dependencies (Day 07 - Production Containerization)
-# Local in-memory session management with ADK + OpenRouter.
+# Leave versions unpinned so pip can solve a compatible set across ADK/RAG stack.
 
-google-adk==2.1.0
-litellm==1.86.2
-python-dotenv==1.2.2
-pydantic==2.11.7
-pydantic-settings==2.10.1
-pytest==8.4.1
+google-adk
+litellm
+python-dotenv
+pydantic
+pydantic-settings
+pytest
+chainlit
+asyncpg
 
-# ── Day 07: Redis session storage ──────────────────────────────────────────
-redis==5.2.0
+# Redis session storage
+redis
 
-# ── Day 07: ChromaDB vector store (RAG) ────────────────────────────────────
+# ChromaDB vector store (RAG)
+# Keep client/server versions aligned with docker-compose image chromadb/chroma:0.5.23.
 chromadb==0.5.23
 # fastembed: ONNX-based embeddings; no PyTorch required; ~35 MB model
-fastembed==0.4.2
+fastembed
 
-# ── Day 07: PostgreSQL (analytics, audit, customer profiles) ───────────────
-SQLAlchemy==2.0.41
-alembic==1.14.1
-psycopg2-binary==2.9.10
+# PostgreSQL (analytics, audit, customer profiles)
+SQLAlchemy
+alembic
+psycopg2-binary

@@ -36,11 +36,14 @@ services:
       CHROMA_HOST: "chromadb"
       CHROMA_PORT: "8000"
       CHROMA_COLLECTION: "${CHROMA_COLLECTION:-ecombot_knowledge}"
+      SKIP_KNOWLEDGE_INGESTION: "${SKIP_KNOWLEDGE_INGESTION:-true}"
       # ── Knowledge / Data ─────────────────────────────────────────────────
       MOCK_DATA_DIR: "src/data"
       KNOWLEDGE_BASE_DIR: "data/knowledge"
       # ── Logging ──────────────────────────────────────────────────────────
       LOG_LEVEL: "${LOG_LEVEL:-INFO}"
+      HOME: "/home/ecombot"
+      XDG_CACHE_HOME: "/home/ecombot/.cache"
     depends_on:
       redis:
         condition: service_healthy
@@ -58,6 +61,61 @@ services:
       timeout: 10s
       retries: 5
       start_period: 90s
+
+  # ─── Chainlit UI Frontend (reuses orchestrator + agents) ───────────────────
+  chainlit:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime
+    image: ecombot:latest
+    container_name: ecombot_chainlit
+    restart: unless-stopped
+    user: root
+    working_dir: /tmp/chainlit
+    entrypoint: ["chainlit", "run", "/app/src/ui/chainlit_app.py", "--host", "0.0.0.0", "--port", "8001"]
+    ports:
+      - "${CHAINLIT_PORT:-8001}:8001"
+    environment:
+      OPENROUTER_API_KEY: "${OPENROUTER_API_KEY}"
+      OPENROUTER_API_BASE: "${OPENROUTER_API_BASE:-https://openrouter.ai/api/v1}"
+      MODEL_NAME: "${MODEL_NAME:-openrouter/google/gemini-2.5-flash}"
+      MODEL_TEMPERATURE: "${MODEL_TEMPERATURE:-0.3}"
+      MAX_OUTPUT_TOKENS: "${MAX_OUTPUT_TOKENS:-1024}"
+      AGENT_NAME: "${AGENT_NAME:-eComBot}"
+      AGENT_PERSONA: "${AGENT_PERSONA:-friendly}"
+      TOOLS_ENABLED: "${TOOLS_ENABLED:-true}"
+      MULTI_AGENT_MODE: "${MULTI_AGENT_MODE:-false}"
+      SESSION_ID_PREFIX: "${SESSION_ID_PREFIX:-ecombot-session}"
+      APP_NAME: "${APP_NAME:-ecombot_app}"
+      USER_ID: "${USER_ID:-default_user}"
+      SESSION_TTL_SECONDS: "${SESSION_TTL_SECONDS:-86400}"
+      REDIS_URL: "redis://redis:6379/0"
+      DATABASE_URL: "postgresql://ecombot:${POSTGRES_PASSWORD:-ecombot_secret}@postgres:5432/ecombot"
+      CHROMA_HOST: "chromadb"
+      CHROMA_PORT: "8000"
+      CHROMA_COLLECTION: "${CHROMA_COLLECTION:-ecombot_knowledge}"
+      SKIP_KNOWLEDGE_INGESTION: "${SKIP_KNOWLEDGE_INGESTION:-true}"
+      MOCK_DATA_DIR: "src/data"
+      KNOWLEDGE_BASE_DIR: "data/knowledge"
+      LOG_LEVEL: "${LOG_LEVEL:-INFO}"
+      HOME: "/home/ecombot"
+      XDG_CACHE_HOME: "/home/ecombot/.cache"
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      chromadb:
+        condition: service_healthy
+    networks:
+      - ecombot_net
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8001"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
 
   # ─── Redis — Session Memory ───────────────────────────────────────────────
   redis:

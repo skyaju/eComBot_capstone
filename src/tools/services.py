@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import math
+import os
 import re
 from collections import Counter
 from typing import Any
@@ -421,5 +422,44 @@ class KnowledgeService:
         if anchor + max_length < len(text):
             snippet += "..."
         return snippet
+
+
+def build_knowledge_service(
+    data_store: MockDataStore,
+    session_service: SessionService | None = None,
+) -> Any:
+    """
+    Create the active knowledge retrieval service.
+
+    Preference order:
+      1) ChromaKnowledgeService when CHROMA_HOST is configured and reachable.
+      2) KnowledgeService lexical fallback (always available).
+    """
+    chroma_host = os.getenv("CHROMA_HOST")
+    chroma_port_raw = os.getenv("CHROMA_PORT", "8000")
+    chroma_collection = os.getenv("CHROMA_COLLECTION", "ecombot_knowledge")
+
+    if chroma_host:
+        try:
+            from src.rag.retrieval_service import ChromaKnowledgeService
+            from src.rag.vector_store import ChromaVectorStore
+
+            chroma_port = int(chroma_port_raw)
+            store = ChromaVectorStore.connect(
+                host=chroma_host,
+                port=chroma_port,
+                collection_name=chroma_collection,
+            )
+            logger.info(
+                "Knowledge service using ChromaDB | host=%s | port=%d | collection=%s",
+                chroma_host,
+                chroma_port,
+                chroma_collection,
+            )
+            return ChromaKnowledgeService(store=store, session_service=session_service)
+        except Exception as exc:
+            logger.warning("ChromaDB unavailable; falling back to lexical KnowledgeService: %s", exc)
+
+    return KnowledgeService(data_store=data_store, session_service=session_service)
 
 

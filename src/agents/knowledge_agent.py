@@ -3,14 +3,14 @@ from __future__ import annotations
 from src.agents.contracts import AgentRequest, AgentResponse
 from src.services.session_service import SessionService
 from src.tools.data_loader import MockDataStore
-from src.tools.services import KnowledgeService
+from src.tools.services import build_knowledge_service
 
 
 class KnowledgeAgent:
     name = "knowledge_agent"
 
     def __init__(self, data_store: MockDataStore, session_service: SessionService) -> None:
-        self._service = KnowledgeService(data_store=data_store, session_service=session_service)
+        self._service = build_knowledge_service(data_store=data_store, session_service=session_service)
         self._session_service = session_service
 
     def handle(self, request: AgentRequest) -> AgentResponse:
@@ -26,7 +26,7 @@ class KnowledgeAgent:
                 agent_name=self.name,
                 handled=False,
                 tool_name="search_knowledge",
-                message="I could not find a reliable policy or FAQ match. Please rephrase with a bit more detail.",
+                message="I could not find this information in the current knowledge base.",
                 confidence=result.get("confidence"),
                 metadata={"error_code": result.get("error_code")},
             )
@@ -42,6 +42,10 @@ class KnowledgeAgent:
             message=f"{top_snippet}\n\nSource:\n{source_lines}",
             confidence=result.get("confidence"),
             sources=sources,
-            metadata={"result_count": len(snippets)},
+            metadata={
+                "result_count": len(snippets),
+                "knowledge_results": snippets,
+                "retrieval_confidence": result.get("confidence"),
+            },
         )
 
